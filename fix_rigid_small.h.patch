@@ -1,0 +1,10 @@
+--- fix_rigid_small.h
++++ fix_rigid_small.h
+@@ -28,6 +28,7 @@
+ namespace LAMMPS_NS {
+ 
+ class FixRigidSmall : public Fix {
++ friend class FixHMC;
+  public:
+   // static variable for ring communication callback to access class data
+ 

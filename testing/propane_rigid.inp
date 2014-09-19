@@ -1,0 +1,33 @@
+variable	nome string propane
+variable	rc equal 14.0
+variable	t_step equal 10
+variable	skin equal 2.0
+
+units		real
+atom_style	full
+bond_style	harmonic
+angle_style	harmonic
+dihedral_style	opls
+pair_style	lj/cut ${rc}
+pair_modify	mix arithmetic tail yes
+
+read_data	${nome}.lammps_data
+
+timestep 	${t_step}
+
+neighbor	${skin} bin
+neigh_modify	delay 0 every 1
+
+fix		1 all rigid/small molecule
+fix		2 all hmc 3 8768 200 1 adjust yes
+
+thermo		40
+thermo_style	custom step press temp pe ke f_2[1] f_2[2] f_2[3]
+restart         1000 ${nome}.res
+dump 		configs all custom 200 ${nome}_rigid.lammpstrj id id type x y z ix iy iz
+run		504
+
+
+
+
+
