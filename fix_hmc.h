@@ -28,6 +28,7 @@ class FixHMC : public Fix {
  public:
   FixHMC(class LAMMPS *, int, char **);
   ~FixHMC();
+  void post_constructor();
   int setmask();
   void init();
   void setup(int);
@@ -62,6 +63,7 @@ class FixHMC : public Fix {
 
   int tune_flag;
 
+  char *mdi;
   class FixNVE *fix_nve;
   class FixRigidSmall *fix_rigid;
 

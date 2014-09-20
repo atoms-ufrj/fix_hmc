@@ -61,24 +61,13 @@ FixHMC::FixHMC(LAMMPS *lmp, int narg, char **arg) :
   int seed = force->numeric(FLERR,arg[4]);      // Seed for random number generation
   double temp = force->numeric(FLERR,arg[5]);   // System temperature
 
-  KT = force->boltz * temp / force->mvv2e;      // K*T in mvv units
-  mbeta = -1.0/(force->boltz * temp);           // -1/(K*T) in energy units
-
-  // Retrieve the molecular dynamics integrator:
-  int ifix = modify->find_fix(arg[6]);
-  if (ifix < 0) error->all(FLERR,"Illegal fix hmc command");
-  class Fix* mdfix = modify->fix[ifix];
-  if (mdfix->time_integrate == 0)
+  // Retrieve the molecular dynamics integrator type:
+  mdi = arg[6];
+  if ( strcmp(mdi,"rigid") != 0 && strcmp(mdi,"flexible") != 0 )
     error->all(FLERR,"Illegal fix hmc command");
 
-  rigid_flag = mdfix->rigid_flag;
-  if (rigid_flag) {
-    if ( (strcmp(mdfix->style,"rigid/nve/small") == 0) ||
-         (strcmp(mdfix->style,"rigid/small") == 0) )
-      fix_rigid = (class FixRigidSmall*) mdfix;
-    else
-      error->all(FLERR,"Fix HMC: use fix rigid/nve/small or rigid/small for rigid body dynamics");
-  }
+  KT = force->boltz * temp / force->mvv2e;      // K*T in mvv units
+  mbeta = -1.0/(force->boltz * temp);           // -1/(K*T) in energy units
 
   // Check keywords:
   int iarg = 7;
@@ -92,10 +81,6 @@ FixHMC::FixHMC(LAMMPS *lmp, int narg, char **arg) :
     }
     else error->all(FLERR,"Illegal fix hmc command");
   }
-
-  // Adopt the molecular dynamics integrator's group as own group:
-  igroup = mdfix->igroup;
-  groupbit = mdfix->groupbit;
 
   // Initialize RNG with a different seed for each process:
   random = new RanPark(lmp,seed + comm->me);
@@ -152,6 +137,28 @@ FixHMC::~FixHMC()
   modify->delete_compute("hmc_peatom");
   modify->delete_compute("hmc_press");
   modify->delete_compute("hmc_pressatom");
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixHMC::post_constructor()
+{
+  char **newarg = new char*[4];
+  newarg[0] = (char *) "hmc_mdi";
+  newarg[1] = group->names[igroup];
+  if (strcmp(mdi,"flexible") == 0) {
+    newarg[2] = (char *) "nve";
+    modify->add_fix(3,newarg);
+  }
+  else {
+    newarg[2] = (char *) "rigid/nve/small";
+    newarg[3] = (char *) "molecule";
+    modify->add_fix(4,newarg);
+  }
+  class Fix* mdfix = modify->fix[modify->find_fix("hmc_mdi")];
+  rigid_flag = mdfix->rigid_flag;
+  if (rigid_flag)
+    fix_rigid = (class FixRigidSmall*) mdfix;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -388,8 +395,9 @@ void FixHMC::init()
   }
 
   // Check whether there are subsequent fixes with active virial_flag:
-  int me = modify->find_fix(this->id);
-  for (int i = me; i < modify->nfix; i++)
+  int first = modify->find_fix(this->id) + 1;
+  if (rigid_flag) first++;
+  for (int i = first; i < modify->nfix; i++)
     if (modify->fix[i]->virial_flag) {
       if (comm->me == 0)
         printf("Fix %s defined after fix hmc.\n",modify->fix[i]->style);
@@ -443,6 +451,8 @@ void FixHMC::setup(int vflag)
     atom_positions(xu);
     random_velocities();
   }
+  for (int i = 0; i < atom->nlocal; i++)
+    deltax[i][0] = deltax[i][1] = deltax[i][2] = 0.0;
   PE = pe->compute_scalar();
   KE = ke->compute_scalar();
   save_current_state();
