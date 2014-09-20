@@ -1,0 +1,11 @@
+--- fix_rigid_small.cpp
++++ fix_rigid_small.cpp
+@@ -421,7 +421,7 @@
+   mass_body = NULL;
+   nmax_mass = 0;
+ 
+-  staticflag = 1;
++  staticflag = 0;
+ }
+ 
+ /* ---------------------------------------------------------------------- */

@@ -264,11 +264,17 @@ void FixHMC::setup_arrays_and_pointers()
     if (modify->fix[i]->virial_flag)
       vatomptr[m++] = &modify->fix[i]->vatom;
 
-  // Determine the maximum number of per-atom variables in reverse communications:
+  // Determine the maximum and the actual numbers of per-atom variables in reverse
+  // communications:
   // Note: fix-related virials do not communicate (thus 'ne' used instead of 'nv')
   comm_reverse = 0;
+  ncommrev = 0;
   for (m = 0; m < ne; m++)
-    if (rev_comm[m]) comm_reverse += 7;  // 1 energy + 6 virials
+    if (rev_comm[m]) {
+      comm_reverse += 7;  // 1 energy + 6 virials
+      if (peatom_flag) ncommrev++;
+      if (pressatom_flag) ncommrev += 6;
+    }
 
   // Determine maximum number of per-atom variables in forward and reverse
   // communications when dealing with rigid bodies:
@@ -290,19 +296,19 @@ void FixHMC::add_new_computes()
   // Kinetic energy:
   newarg[0] = (char *) "hmc_ke";
   newarg[2] = (char *) "ke";
-  modify->add_compute(3,newarg,lmp->suffix);
+  modify->add_compute(3,newarg);
   ke = modify->compute[modify->ncompute-1];
 
   // Potential energy:
   newarg[0] = (char *) "hmc_pe";
   newarg[2] = (char *) "pe";
-  modify->add_compute(3,newarg,lmp->suffix);
+  modify->add_compute(3,newarg);
   pe = modify->compute[modify->ncompute-1];
 
   // Per-atom potential energy:
   newarg[0] = (char *) "hmc_peatom";
   newarg[2] = (char *) "pe/atom";
-  modify->add_compute(3,newarg,lmp->suffix);
+  modify->add_compute(3,newarg);
   peatom = modify->compute[modify->ncompute-1];
 
   // System pressure:
@@ -310,13 +316,13 @@ void FixHMC::add_new_computes()
   newarg[2] = (char *) "pressure";
   newarg[3] = (char *) "NULL";
   newarg[4] = (char *) "virial";
-  modify->add_compute(5,newarg,lmp->suffix);
+  modify->add_compute(5,newarg);
   press = modify->compute[modify->ncompute-1];
 
   // Per-atom stress tensor:
   newarg[0] = (char *) "hmc_pressatom";
   newarg[2] = (char *) "stress/atom";
-  modify->add_compute(5,newarg,lmp->suffix);
+  modify->add_compute(5,newarg);
   pressatom = modify->compute[modify->ncompute-1];
 
   delete [] newarg;
@@ -618,7 +624,7 @@ void FixHMC::save_current_state()
   // Perform reverse communication to incorporate ghost atoms info:
   if (comm_reverse && (peatom_flag || pressatom_flag)) {
     comm_flag = ATOMS;
-    comm->reverse_comm_variable_fix(this);
+    comm->reverse_comm_fix(this,ncommrev);
   }
 }
 
@@ -814,7 +820,7 @@ void FixHMC::rigid_body_restore_positions(double **deltax)
 
   // Reverse communicate sum(mass*xcm) from ghost to local bodies:
   comm_flag = XCM;
-  comm->reverse_comm_variable_fix(this);
+  comm->reverse_comm_fix(this,3);
 
   // For each rigid body, divide xcm by mass:
   for (ibody = 0; ibody < nlocal_body; ibody++) {
@@ -825,7 +831,7 @@ void FixHMC::rigid_body_restore_positions(double **deltax)
   }
 
   // Forward communicate xcm from local to ghost bodies:
-  comm->forward_comm_variable_fix(this);
+  comm->forward_comm_fix(this,3);
 }
 
 /* ----------------------------------------------------------------------
@@ -883,7 +889,7 @@ void FixHMC::rigid_body_restore_orientations()
 
   // Reverse communicate inertia tensors:
   comm_flag = ITENSOR;
-  comm->reverse_comm_variable_fix(this);
+  comm->reverse_comm_fix(this,6);
 
   // Diagonalize inertia tensor for each body via Jacobi rotations:
   int ierror;
@@ -917,7 +923,7 @@ void FixHMC::rigid_body_restore_orientations()
 
   // Forward communicate body orientations:
   comm_flag = ROTATION;
-  comm->forward_comm_variable_fix(this);
+  comm->forward_comm_fix(this,12);
 
   // Compute atom coordinates in internal body reference frames:
   double delta[3];
@@ -989,7 +995,7 @@ void FixHMC::rigid_body_restore_forces()
 
   // Reverse communicate fcm and torque of all bodies:
   comm_flag = FORCE_TORQUE;
-  comm->reverse_comm_variable_fix(this);
+  comm->reverse_comm_fix(this,6);
 }
 
 /* ----------------------------------------------------------------------
@@ -1020,7 +1026,7 @@ void FixHMC::rigid_body_random_velocities()
 
   // Forward communicate vcm and omega to ghost bodies:
   comm_flag = VCM_OMEGA;
-  comm->forward_comm_variable_fix(this);
+  comm->forward_comm_fix(this,6);
 
   // Compute angular momenta of rigid bodies:
   for (int ibody = 0; ibody < ntotal; ibody++) {
@@ -1044,7 +1050,7 @@ void FixHMC::rigid_body_random_velocities()
    Pack rigid body info for forward communication
 ------------------------------------------------------------------------- */
 
-int FixHMC::pack_comm(int n, int *list, double *buf, int pbc_flag, int *pbc)
+int FixHMC::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc)
 {
   int *bodyown = fix_rigid->bodyown;
   FixRigidSmall::Body *body = fix_rigid->body;
@@ -1082,7 +1088,7 @@ int FixHMC::pack_comm(int n, int *list, double *buf, int pbc_flag, int *pbc)
    Unpack rigid body info from forward communication
 ------------------------------------------------------------------------- */
 
-void FixHMC::unpack_comm(int n, int first, double *buf)
+void FixHMC::unpack_forward_comm(int n, int first, double *buf)
 {
   int *bodyown = fix_rigid->bodyown;
   FixRigidSmall::Body *body = fix_rigid->body;

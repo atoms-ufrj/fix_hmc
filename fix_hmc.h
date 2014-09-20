@@ -35,8 +35,8 @@ class FixHMC : public Fix {
   double compute_scalar();
   double compute_vector(int);
 
-  int pack_comm(int, int *, double *, int, int *);
-  void unpack_comm(int, int, double *);
+  int pack_forward_comm(int, int *, double *, int, int *);
+  void unpack_forward_comm(int, int, double *);
   int pack_reverse_comm(int, int, double *);
   void unpack_reverse_comm(int, int *, double *);
   void grow_arrays(int);
@@ -110,6 +110,7 @@ class FixHMC : public Fix {
 
   int comm_flag;
   int nvalues;
+  int ncommrev;
 
   double (*itensor)[6];
 
