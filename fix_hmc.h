@@ -73,7 +73,7 @@ class FixHMC : public Fix {
   double DeltaPE, DeltaKE;
 
   class RanPark *random;
-
+  class RanPark *random_equal;
   double **xu;
   double **deltax;
 

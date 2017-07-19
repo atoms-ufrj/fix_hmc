@@ -23,15 +23,14 @@ velocity	all create ${T} ${seed}
 neighbor	${skin} bin
 neigh_modify	delay 5 every 1 check yes
 
-if 		"${mdi} == rigid" &
-then 		"timestep ${dt_rigid}" &
-else 		"timestep ${dt_nve}"
 
 compute_modify  thermo_temp extra 0
 
-dump 		configs all custom 201 ${nome}_rigid.lammpstrj id id type x y z ix iy iz
+timestep	20
 
-fix		hmc all hmc 10 5643 ${T} ${mdi} adjust yes
+fix		1 all rigid/nve/small molecule
+fix		2 all hmc 10 5643 ${T} 1 adjust yes
+
 
 compute		eatom all pe/atom
 compute		pe all reduce sum c_eatom
@@ -43,11 +42,11 @@ compute         press all pressure thermo_temp virial
 variable	delta_e equal round(10000*(c_pe-c_thermo_pe))
 variable	delta_p equal round(10000*(c_press-v_press))
 
-thermo_style	custom step temp pe c_pe v_delta_e c_press v_press v_delta_p f_hmc f_hmc[5]
+thermo_style	custom step temp pe c_pe v_delta_e c_press v_press v_delta_p f_2 f_2[5]
 
-thermo		102
-restart         10002 ${nome}.res
-run		10002
+thermo		10
 
-run		10002
+run		2000
+
+
 

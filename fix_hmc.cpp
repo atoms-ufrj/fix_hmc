@@ -52,7 +52,7 @@ enum{ ATOMS, VCM_OMEGA, XCM, ITENSOR, ROTATION, FORCE_TORQUE };
 /* ---------------------------------------------------------------------- */
 
 FixHMC::FixHMC(LAMMPS *lmp, int narg, char **arg) :
-  Fix(lmp, narg, arg)
+  Fix(lmp, narg, arg),random_equal(NULL)
 {
   if (narg < 7) error->all(FLERR,"Illegal fix hmc command");
 
@@ -85,7 +85,7 @@ FixHMC::FixHMC(LAMMPS *lmp, int narg, char **arg) :
   // Initialize RNG with a different seed for each process:
   random = new RanPark(lmp,seed + comm->me);
   for (int i = 0; i < 100; i++) random->gaussian();
-
+  random_equal = new RanPark(lmp,seed);
   // Perform initialization of per-atom arrays:
   xu = NULL;
   deltax = NULL;
@@ -132,6 +132,7 @@ FixHMC::~FixHMC()
   delete [] eatomptr;
   delete [] vatomptr;
   delete [] rev_comm;
+  delete random_equal;
   modify->delete_compute("hmc_ke");
   modify->delete_compute("hmc_pe");
   modify->delete_compute("hmc_peatom");
@@ -444,7 +445,8 @@ void FixHMC::setup(int vflag)
   nattempts = 0;
   naccepts = 0;
   if (rigid_flag) {
-    rigid_body_atom_positions(xu);
+    //rigid_body_atom_positions(xu);
+    atom_positions(xu);
     rigid_body_random_velocities();
   }
   else {
@@ -477,7 +479,8 @@ void FixHMC::end_of_step()
 
   // Compute proposed unwrapped positions and displacements:
   if (rigid_flag)
-    rigid_body_atom_positions(xu);
+    atom_positions(xu); 
+  //  rigid_body_atom_positions(xu);
   else
     atom_positions(xu);
   int nlocal = atom->nlocal;
@@ -498,7 +501,7 @@ void FixHMC::end_of_step()
   double DeltaE = DeltaPE + DeltaKE;
   int accept = DeltaE < 0.0;
   if (~accept) {
-    accept = random->uniform() <= exp(mbeta*DeltaE);
+    accept = random_equal->uniform() <= exp(mbeta*DeltaE);
     MPI_Bcast(&accept,1,MPI_INT,0,world);
   }
   if (accept) {
@@ -862,7 +865,7 @@ void FixHMC::rigid_body_restore_orientations()
   int *atom2body = fix_rigid->atom2body;
   double **displace = fix_rigid->displace;
   FixRigidSmall::Body *body = fix_rigid->body;
-
+  imageint *xcmimage = fix_rigid->xcmimage;
   int ibody;
   double *it;
   itensor = new double[ntotal_body][6];
@@ -882,7 +885,7 @@ void FixHMC::rigid_body_restore_orientations()
     ibody = atom2body[i];
     if (ibody >= 0) {
       b = &body[ibody];
-      domain->unmap(x[i],image[i],unwrap);
+      domain->unmap(x[i],xcmimage[i],unwrap);
       dx = unwrap[0] - b->xcm[0];
       dy = unwrap[1] - b->xcm[1];
       dz = unwrap[2] - b->xcm[2];
@@ -942,7 +945,7 @@ void FixHMC::rigid_body_restore_orientations()
       displace[i][0] = displace[i][1] = displace[i][2] = 0.0;
     else {
       b = &body[atom2body[i]];
-      domain->unmap(x[i],image[i],unwrap);
+      domain->unmap(x[i],xcmimage[i],unwrap);
       delta[0] = unwrap[0] - b->xcm[0];
       delta[1] = unwrap[1] - b->xcm[1];
       delta[2] = unwrap[2] - b->xcm[2];
@@ -964,7 +967,7 @@ void FixHMC::rigid_body_restore_forces()
   int ntotal_body = fix_rigid->nlocal_body + fix_rigid->nghost_body;
   int *atom2body = fix_rigid->atom2body;
   FixRigidSmall::Body *body = fix_rigid->body;
-
+  imageint *xcmimage = fix_rigid->xcmimage;
   int i, ibody;
   double lx, ly, lz;
   double fx, fy, fz;
@@ -992,7 +995,7 @@ void FixHMC::rigid_body_restore_forces()
       b->fcm[1] += fy;
       b->fcm[2] += fz;
 
-      domain->unmap(x[i],image[i],unwrap);
+      domain->unmap(x[i],xcmimage[i],unwrap);
       lx = unwrap[0] - b->xcm[0];
       ly = unwrap[1] - b->xcm[1];
       lz = unwrap[2] - b->xcm[2];
